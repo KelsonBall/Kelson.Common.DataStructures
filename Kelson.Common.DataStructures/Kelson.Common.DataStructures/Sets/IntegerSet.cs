@@ -6,35 +6,61 @@ using System.Runtime.CompilerServices;
 namespace Kelson.Common.DataStructures.Sets
 {
     /// <summary>
-    /// SIMD Set of integers
+    /// SIMD accelerated Set of integers within a bounded range
     /// </summary>
-    public class ContiguousSet : ISet<int>
+    public class IntegerSet : ISet<int>
     {
         private readonly ImmutableSet64[] data;
-        private readonly int offset;
+        private int offset;
         private readonly int length;
 
-        public ContiguousSet(int start, int length)
+        public IntegerSet(int start, int length)
         {
             offset = start;
             this.length = length;
             data = new ImmutableSet64[(length >> 6) + 1];
         }
 
-        protected ContiguousSet(ImmutableSet64[] data, int offset)
+        protected IntegerSet(ImmutableSet64[] data, int offset)
         {
             this.data = data;
             this.offset = offset;
-            for (int i = 0; i < data.Length; i++)            
-                Count += data[i].Count;            
+            for (int i = 0; i < data.Length; i++)
+                Count += data[i].Count;
         }
 
         private int BlockIndex(int i) => i >> 6;
         private int BitIndex(int i) => i % 64;
 
-        public int Count { get; private set; }        
+        public int Count { get; private set; }
 
         bool ICollection<int>.IsReadOnly => throw new NotImplementedException();
+
+        /// <summary>
+        /// !!Mixed mutability operation!!
+        /// Returns a set with a reference to the same data but with all values shifted by the displacement value
+        /// </summary>
+        /// <param name="displacement"></param>
+        /// <returns></returns>
+        public IntegerSet Shifted(int displacement) => new IntegerSet(data, offset + displacement);
+
+        public static IntegerSet operator <<(IntegerSet set, int displacement) => set.Shifted(-displacement);
+
+        public static IntegerSet operator >>(IntegerSet set, int displacement) => set.Shifted(displacement);
+
+        const int BLOCK_SIZE = sizeof(ulong);
+        public IntegerSet CopyIntoRange(int newOffset, int newLength)
+        {
+            var newSet = new IntegerSet(newOffset, newLength);
+            var difference = offset - newOffset;
+            var block_shift = difference / BLOCK_SIZE;
+            var bit_shift = difference % BLOCK_SIZE;
+            for (int block = 0; block < data.Length; block++)
+            {
+                var aligned = 
+            }
+            return newSet;
+        }
 
         public bool Add(int item)
         {
@@ -44,23 +70,17 @@ namespace Kelson.Common.DataStructures.Sets
             data[BlockIndex(i)] = data[BlockIndex(i)].Add(BitIndex(i));
             Count++;
             return true;
-            
         }
 
         public bool AddRange(IEnumerable<int> other)
         {
             bool newItem = false;
             foreach (var item in other)
-            {
-                var add = Add(item);
-                if (add)
-                    Count++;
-                newItem = newItem | add;
-            }
+                newItem = newItem | Add(item);
             return newItem;
         }
 
-        void ICollection<int>.Add(int item) => Add(item);        
+        void ICollection<int>.Add(int item) => Add(item);
 
         void ICollection<int>.Clear()
         {
@@ -91,41 +111,69 @@ namespace Kelson.Common.DataStructures.Sets
             return true;
         }
 
-        private void Guard(ContiguousSet other)
-        {
-            if (other.offset != offset || other.length != length)
-                throw new ArgumentException("Sets are over different ranges");
-        }
+        private bool Guard(IntegerSet other) => (other.offset == offset && other.length == length);
 
         void ISet<int>.ExceptWith(IEnumerable<int> other)
         {
-            if (other is ContiguousSet set)
+            if (other is IntegerSet set)
                 ExceptWith(set);
             else
             {
                 foreach (var item in other)
                 {
                     var i = item - offset;
-                    data[BlockIndex(i)].Remove(BitIndex(i));
+                    var index = BlockIndex(i);
+                    var count = data[index].Count;
+                    data[index] = data[index].Remove(BitIndex(i));
+                    Count += data[index].Count - count;
                 }
             }
         }
 
-        void ExceptWith(ContiguousSet other)
+        public void ExceptWith(IntegerSet other)
         {
-            Guard(other);
-            for (int i = 0; i < data.Length; i++)
-                data[i] = data[i].Except(other.data[i]);
+            if (Guard(other))
+            {
+                for (int i = 0; i < data.Length; i++)
+                {
+                    var count = data[i].Count;
+                    data[i] = data[i].Except(other.data[i]);
+                    Count += data[i].Count - count;
+                }
+            }
+            else
+            {
+                var block_offset = (offset - other.offset) / 64;
+                var bit_offset = -((offset - other.offset) % 64);
+                for (int block = 0; block < data.Length && block + block_offset < other.data.Length; block++)
+                {
+                    if (block + block_offset < 0)
+                        continue;
+                    var a = data[block];
+                    var b = other.data[block + block_offset];
+                    var c = new ImmutableSet64();
+                    if (bit_offset > 0 && (block + block_offset) - 1 >= 0)
+                        c = other.data[block + block_offset - 1];
+                    else if ((block + block_offset) + 1 < other.data.Length)
+                        c = other.data[block + block_offset + 1];
+                    var aligned_b = b.Shift(bit_offset, c);
+
+                    var count = data[block].Count;
+                    data[block] = a.Except(aligned_b);
+                    Count += data[block].Count - count;
+                    var removed = a.Intersect(aligned_b);
+                }
+            }
         }
 
         void ISet<int>.IntersectWith(IEnumerable<int> other)
         {
-            var otherSet = new ContiguousSet(offset, length);
+            var otherSet = new IntegerSet(offset, length);
             otherSet.AddRange(other);
             IntersectWith(otherSet);
         }
 
-        public void IntersectWith(ContiguousSet other)
+        public void IntersectWith(IntegerSet other)
         {
             Guard(other);
             for (int i = 0; i < data.Length; i++)
@@ -134,12 +182,12 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool IsProperSubsetOf(IEnumerable<int> other)
         {
-            var otherSet = new ContiguousSet(offset, length);
+            var otherSet = new IntegerSet(offset, length);
             otherSet.AddRange(other);
             return IsProperSubsetOf(otherSet);
         }
 
-        public bool IsProperSubsetOf(ContiguousSet other)
+        public bool IsProperSubsetOf(IntegerSet other)
         {
             Guard(other);
             bool hasProperSubset = false;
@@ -155,12 +203,12 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool IsProperSupersetOf(IEnumerable<int> other)
         {
-            var otherSet = new ContiguousSet(offset, length);
+            var otherSet = new IntegerSet(offset, length);
             otherSet.AddRange(other);
             return IsProperSupersetOf(otherSet);
         }
 
-        public bool IsPropertSupersetOf(ContiguousSet other)
+        public bool IsPropertSupersetOf(IntegerSet other)
         {
             Guard(other);
             bool hasProperSuperset = false;
@@ -176,12 +224,12 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool IsSubsetOf(IEnumerable<int> other)
         {
-            var otherSet = new ContiguousSet(offset, length);
+            var otherSet = new IntegerSet(offset, length);
             otherSet.AddRange(other);
             return IsSubsetOf(otherSet);
         }
 
-        public bool IsSubsetOf(ContiguousSet other)
+        public bool IsSubsetOf(IntegerSet other)
         {
             Guard(other);
             for (int i = 0; i < data.Length; i++)
@@ -192,12 +240,12 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool IsSupersetOf(IEnumerable<int> other)
         {
-            var otherSet = new ContiguousSet(offset, length);
+            var otherSet = new IntegerSet(offset, length);
             otherSet.AddRange(other);
             return IsSupersetOf(otherSet);
         }
 
-        public bool IsSupersetOf(ContiguousSet other)
+        public bool IsSupersetOf(IntegerSet other)
         {
             Guard(other);
             for (int i = 0; i < data.Length; i++)
@@ -208,12 +256,12 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool Overlaps(IEnumerable<int> other)
         {
-            var otherSet = new ContiguousSet(offset, length);
+            var otherSet = new IntegerSet(offset, length);
             otherSet.AddRange(other);
             return Overlaps(otherSet);
         }
 
-        public bool Overlaps(ContiguousSet other)
+        public bool Overlaps(IntegerSet other)
         {
             Guard(other);
             for (int i = 0; i < data.Length; i++)
@@ -245,10 +293,23 @@ namespace Kelson.Common.DataStructures.Sets
         IEnumerator<int> IEnumerable<int>.GetEnumerator()
         {
             for (int i = 0; i < data.Length; i++)
+            {
+                int block = i << 6;
                 foreach (var item in data[i])
-                    yield return item + offset;
+                    yield return block + item + offset;
+            }
         }
 
         IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<int>)this).GetEnumerator();
+
+        void ISet<int>.SymmetricExceptWith(IEnumerable<int> other)
+        {
+            throw new NotImplementedException();
+        }
+
+        void ISet<int>.UnionWith(IEnumerable<int> other)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

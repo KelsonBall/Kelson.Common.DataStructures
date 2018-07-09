@@ -40,7 +40,7 @@ namespace Kelson.DataStructures
                     Count++;
             }
             return this;
-        }        
+        }
 
         private protected readonly SortedList<char, TrieNode> nodes = new SortedList<char, TrieNode>();
         protected readonly Predicate<string> validate;
@@ -54,7 +54,9 @@ namespace Kelson.DataStructures
         {
             public readonly int Index;
             public readonly char C;
-            public readonly string Prefix;
+            public readonly string Source;
+            public readonly int PrefixLength;
+            public string Prefix => Source.Substring(0, PrefixLength);
             public readonly SortedList<char, TrieNode> Children;
             public object Payload;
             public bool IsTerminal;
@@ -64,7 +66,8 @@ namespace Kelson.DataStructures
             {
                 Index = index;
                 C = data[index];
-                Prefix = data.Substring(0, index + 1);
+                Source = data;
+                PrefixLength = index + 1;
                 Children = new SortedList<char, TrieNode>();
                 if (index < data.Length - 1)
                 {
@@ -111,31 +114,31 @@ namespace Kelson.DataStructures
                 }
             }
 
-            private TrieNode TraversePrefix(string prefix, int prefixIndex = 0)
+            private bool TraversePrefix(string prefix, out TrieNode node, int prefixIndex = 0)
             {
-                var startNode = this;
+                node = this;
                 prefixIndex++;
                 while (prefixIndex < prefix.Length)
                 {
-                    if (startNode.Children.ContainsKey(prefix[prefixIndex]))
-                        startNode = startNode.Children[prefix[prefixIndex]];
+                    if (node.Children.ContainsKey(prefix[prefixIndex]))
+                        node = node.Children[prefix[prefixIndex]];
                     else
-                        return null;
+                        return false;
                     prefixIndex++;
                 }
-                return startNode;
+                return true;
             }
 
             public IEnumerable<TrieNode> Values() => this.DepthFirstTraverse(node => node.Children.Values, node => node.IsTerminal);
 
-            public IEnumerable<TrieNode> Values(string prefix, int prefixIndex = 0) => TraversePrefix(prefix, prefixIndex)?.Values() ?? Enumerable.Empty<TrieNode>();
+            public IEnumerable<TrieNode> Values(string prefix, int prefixIndex = 0) => TraversePrefix(prefix, out TrieNode node, prefixIndex) ? node.Values() : Enumerable.Empty<TrieNode>();
 
-            protected static bool isUniquePrefix(TrieNode node) => node.TerminalDescendents == 1 || !node.Children.Any(c => c.Value.TerminalDescendents > 0);
-            protected static readonly List<TrieNode> noNodes = new List<TrieNode>();
+            private static bool isUniquePrefix(TrieNode node) => node.TerminalDescendents == 1 || !node.Children.Any(c => c.Value.TerminalDescendents > 0);
+            private static readonly List<TrieNode> noNodes = new List<TrieNode>();
 
             public IEnumerable<TrieNode> Prefixes() => this.DepthFirstTraverse(node => isUniquePrefix(node) ? noNodes : node.Children.Values, isUniquePrefix);
 
-            public IEnumerable<TrieNode> Prefixes(string prefix, int index = 0) => TraversePrefix(prefix, index)?.Prefixes() ?? Enumerable.Empty<TrieNode>();
+            public IEnumerable<TrieNode> Prefixes(string prefix, int index = 0) => TraversePrefix(prefix, out TrieNode node, index) ? node.Prefixes() : Enumerable.Empty<TrieNode>();
 
             public override string ToString()
             {

@@ -19,13 +19,57 @@ namespace Kelson.Common.DataStructures.Sets
         [FieldOffset(0)]
         private readonly ulong values;
 
-        public ImmutableSet64(in ulong value) => values = value;        
+        public ImmutableSet64(in ulong value) => values = value;
+
+        /// <summary>
+        /// Jump table mapping all byte values to the number of bits in that byte
+        /// </summary>
+        private static readonly byte[] BITCOUNTS = new byte[] { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8 };
 
         /// <summary>
         /// Enumerates set to determine number of values
         /// </summary>
-        public int Count => this.Count();
-        
+        public int Count
+        {
+            get
+            {
+                int sum = 0;
+                unsafe
+                {
+                    fixed (ulong* ptr = &values)
+                    {
+                        if (*(int*)ptr != 0)
+                        {
+                            byte* bytes = (byte*)ptr;
+                            for (int i = 0; i < 4; i++)
+                                sum += BITCOUNTS[*(bytes + i)];
+                        }
+                        if (*(((int*)ptr) + 1) != 0)
+                        {
+                            byte* bytes = (byte*)ptr;
+                            for (int i = 4; i < 8; i++)
+                                sum += BITCOUNTS[*(bytes + i)];
+                        }
+                    }
+                }
+                return sum;
+            }
+        }
+
+#if DEBUG
+        public int EnumerateAndCount
+        {
+            get
+            {
+                var v = values;
+                ulong sum = v & 1ul;
+                while ((v = (v >> 1)) != 0)
+                    sum += v & 1ul;
+                return (int)sum;
+            }
+        }
+#endif
+
         public bool IsEmpty => values == 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -35,9 +79,32 @@ namespace Kelson.Common.DataStructures.Sets
                 throw new IndexOutOfRangeException($"Index {index} is out of {nameof(ImmutableSet64)} range of [0,63]");
         }
 
+        /// <summary>
+        /// Shift a set in a positive or negative direction
+        /// </summary>
+        public ImmutableSet64 Shift(int shift) => shift > 0 ? (ImmutableSet64)(values << shift) : (ImmutableSet64)(values >> -shift);
+
+        /// <summary>
+        /// Shifts a set as if it contained the adjacent set
+        /// </summary>
+        public ImmutableSet64 Shift(int shift, ImmutableSet64 adjacent)
+        {
+            var shifted = Shift(shift);
+            if (shift < 0)
+            {
+                adjacent = adjacent.Shift(64 + shift);
+                return shifted.Union(adjacent);
+            }
+            else
+            {
+                adjacent = adjacent.Shift(-64 + shift);
+                return shifted.Union(adjacent);
+            }
+        }
+
         IImmutableSet<int> IImmutableSet<int>.Add(int value)
         {
-            Guard(value);            
+            Guard(value);
             return (ImmutableSet64)values.Set(value);
         }
 
@@ -51,6 +118,14 @@ namespace Kelson.Common.DataStructures.Sets
         {
             var v = this;
             foreach (var item in valuesArray)
+                v = v.Add(item);
+            return v;
+        }
+
+        public ImmutableSet64 AddRange(IEnumerable<int> valuesEnumerable)
+        {
+            var v = this;
+            foreach (var item in valuesEnumerable)
                 v = v.Add(item);
             return v;
         }
@@ -77,21 +152,21 @@ namespace Kelson.Common.DataStructures.Sets
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ImmutableSet64 Except(ImmutableSet64 other) => (ImmutableSet64)(values & ~other.values);        
+        public ImmutableSet64 Except(ImmutableSet64 other) => (ImmutableSet64)(values & ~other.values);
 
         IImmutableSet<int> IImmutableSet<int>.Intersect(IEnumerable<int> other)
-        {            
+        {
             if (other is ImmutableSet64 set)
                 return Intersect(set);
             var v = new ImmutableSet64();
             foreach (var item in other)
-                if (Contains(item))                                
+                if (Contains(item))
                     v = v.Add(item);
             return v;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ImmutableSet64 Intersect(ImmutableSet64 other) => (ImmutableSet64)(values & other.values);        
+        public ImmutableSet64 Intersect(ImmutableSet64 other) => (ImmutableSet64)(values & other.values);
 
         bool IImmutableSet<int>.IsProperSubsetOf(IEnumerable<int> other)
         {
@@ -157,10 +232,10 @@ namespace Kelson.Common.DataStructures.Sets
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsSubsetOf(ImmutableSet64 other) => ((values & (values ^ other.values)) == 0);
-        
+
         bool IImmutableSet<int>.IsSupersetOf(IEnumerable<int> other)
         {
-            // if all values in `other` are found in `this` return true            
+            // if all values in `other` are found in `this` return true
             foreach (var item in other)
                 if (!Contains(item))
                     return false;
@@ -189,7 +264,7 @@ namespace Kelson.Common.DataStructures.Sets
         {
             Guard(value);
             return (ImmutableSet64)values.Clear(value);
-        }        
+        }
 
         IImmutableSet<int> IImmutableSet<int>.SymmetricExcept(IEnumerable<int> other)
         {
@@ -225,7 +300,7 @@ namespace Kelson.Common.DataStructures.Sets
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ImmutableSet64 Union(ImmutableSet64 other) => (ImmutableSet64)(values | other.values);        
+        public ImmutableSet64 Union(ImmutableSet64 other) => (ImmutableSet64)(values | other.values);
 
         public IEnumerator<int> GetEnumerator()
         {
@@ -264,6 +339,6 @@ namespace Kelson.Common.DataStructures.Sets
         {
             fixed (ulong* ptr = &v)
                 return *(ImmutableSet64*)ptr;
-        }        
-    }    
+        }
+    }
 }

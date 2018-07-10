@@ -1,19 +1,18 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace Kelson.Common.DataStructures.Sets
 {
-#if false
     /// <summary>
     /// SIMD accelerated Set of integers within a bounded range
     /// </summary>
     public class IntegerSet : ISet<int>
     {
-        private ImmutableSet64[] data;
+        private ImmutableSet8[] data;
         private int offset;
         private readonly int length;
 
@@ -21,10 +20,10 @@ namespace Kelson.Common.DataStructures.Sets
         {
             offset = start;
             this.length = length;
-            data = new ImmutableSet64[((length - 1) >> 6) + 1];
+            data = new ImmutableSet8[((length - 1) >> 3) + 1];
         }
 
-        protected IntegerSet(ImmutableSet64[] data, int offset)
+        protected IntegerSet(ImmutableSet8[] data, int offset)
         {
             this.data = data;
             this.offset = offset;
@@ -32,8 +31,8 @@ namespace Kelson.Common.DataStructures.Sets
                 Count += data[i].Count;
         }
 
-        private int BlockIndex(int i) => i >> 6;
-        private int BitIndex(int i) => i % 64;
+        private int BlockIndex(int i) => i >> 3;
+        private int BitIndex(int i) => i % 8;
 
         public int Count { get; private set; }
 
@@ -61,55 +60,53 @@ namespace Kelson.Common.DataStructures.Sets
             }
         }
 
-        const int BLOCK_SIZE = 64;
+        const int BLOCK_SIZE = 8;
         public IntegerSet CopyIntoRange(int newOffset, int newLength)
         {
             if (newOffset + newLength < offset || newOffset > offset + length)
                 return new IntegerSet(newOffset, 0);
             var newSet = new IntegerSet(newOffset, newLength);
 
-            int i = 0;
+            int i = Math.Max(0, (offset - newOffset) / BLOCK_SIZE);
             foreach (var block in ShiftedSets(newOffset, newLength))
             {
+                if (i == newSet.data.Length)
+                    break;
                 newSet.data[i++] = block;
                 newSet.Count += block.Count;
             }
             return newSet;
         }
 
-        public IEnumerable<ImmutableSet64> ShiftedSets(int newOffset, int newLength)
+        public IEnumerable<ImmutableSet8> ShiftedSets(int newOffset, int newLength)
         {
-            var block_count = ((newLength - 1) >> 6) + 1;
             var difference = offset - newOffset;
-            var block_shift = difference / BLOCK_SIZE;
-            var bit_shift = (Math.Abs(difference) % BLOCK_SIZE);
-            if (difference < 0)
-                bit_shift = -bit_shift;
-            for (int result_block = 0; result_block < block_count; result_block++)
+            //var block_shift = difference / BLOCK_SIZE;
+            //var bit_shift = (Math.Abs(difference) % BLOCK_SIZE);
+            //if (difference < 0)
+            //    bit_shift = -bit_shift;
+
+            for (int i = 0; i <= data.Length; i++)
             {
-                var origin_block = result_block + block_shift;
-                if (difference > 0 && block_shift == 0)
-                    origin_block++;
+                var current = i < data.Length ? data[i] : new ImmutableSet8();
 
-                var value_set = new ImmutableSet64();
-                if (origin_block >= 0 && origin_block < data.Length)
-                    value_set = data[origin_block];
+                var value = (i * BLOCK_SIZE) + offset;
 
-                var adjacent = new ImmutableSet64();
-                if (difference < 0)
-                {
-                    if (origin_block + 1 < data.Length)
-                        adjacent = data[origin_block + 1];
-                    var result = value_set.Shift(bit_shift, adjacent);
-                    yield return result;
-                }
+                if (value >= newOffset + newLength)
+                    yield break;
+
+                var block_index_in_new_range = ((value - newOffset) / BLOCK_SIZE);
+                var bit_index_in_new_range = Math.Abs(value - newOffset) % BLOCK_SIZE;
+
+                if (block_index_in_new_range < 0)
+                    continue;
+
+                if (bit_index_in_new_range == 0)
+                    yield return current;
+                else if (difference < 0)
+                    yield return current.Shift(-bit_index_in_new_range, i < data.Length - 1 ? data[i + 1] : new ImmutableSet8());
                 else
-                {
-                    if (origin_block - 1 > 0)
-                        adjacent = data[origin_block - 1];
-                    var result = value_set.Shift(bit_shift, adjacent);
-                    yield return result;
-                }
+                    yield return current.Shift(bit_index_in_new_range, i > 0 ? data[i - 1] : new ImmutableSet8());
             }
 
             //for (int origin_block = 0; origin_block < data.Length && origin_block < block_count; origin_block++)
@@ -118,7 +115,7 @@ namespace Kelson.Common.DataStructures.Sets
             //        continue;
 
             //    var value_set = data[origin_block - block_shift];
-            //    var adjacent = new ImmutableSet64();
+            //    var adjacent = new ImmutableSet8();
             //    if (block_shift <= 0 && bit_shift <= 0 && origin_block - block_shift + 1 < data.Length)
             //        adjacent = data[origin_block - block_shift + 1];
             //    else if (block_shift >= 0 && bit_shift >= 0 && origin_block - block_shift - 1 > 0)
@@ -150,7 +147,7 @@ namespace Kelson.Common.DataStructures.Sets
         public void Clear()
         {
             for (int i = 0; i < data.Length; i++)
-                data[i] = new ImmutableSet64();
+                data[i] = new ImmutableSet8();
             Count = 0;
         }
 
@@ -356,7 +353,7 @@ namespace Kelson.Common.DataStructures.Sets
         {
             for (int i = 0; i < data.Length; i++)
             {
-                int block = i << 6;
+                int block = i << 3;
                 foreach (var item in data[i])
                     yield return block + item + offset;
             }
@@ -374,5 +371,4 @@ namespace Kelson.Common.DataStructures.Sets
             throw new NotImplementedException();
         }
     }
-#endif
 }

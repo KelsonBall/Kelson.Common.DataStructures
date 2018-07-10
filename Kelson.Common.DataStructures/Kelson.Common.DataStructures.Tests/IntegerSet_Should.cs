@@ -23,18 +23,38 @@ namespace Kelson.Common.DataStructures.Tests
         [Fact]
         public void CopyToRange()
         {
-            for (var offset = -100; offset <= 100; offset++)
+            int to_length = 8;
+            int length = 40;
+            for (int to_offset = -10; to_offset <= 10; to_offset++)
             {
-                var set = new IntegerSet(offset, 128);
-                set.Flip();
-                var expected = new IntegerSet(0, 64);
-                if (offset < 0)
-                    expected.AddRange(Enumerable.Range(0, Math.Min(64, offset + 128)));
-                else if (offset < 64)
-                    expected.AddRange(Enumerable.Range(offset, 64 - offset));
-                var result = set.CopyIntoRange(0, 64);
-                result.SetEquals(expected).Should().BeTrue();
-                result.Count.Should().Be(expected.Count);
+                for (var offset = -(length + 1); offset <= 0; offset++)
+                {
+                    var set = new IntegerSet(offset, length);
+                    set.Flip();
+                    var expected = new IntegerSet(to_offset, to_length);
+                    if (offset + length >= to_offset + to_length && offset <= to_offset)
+                        expected.AddRange(Enumerable.Range(to_offset, Math.Min(to_length, offset + length - to_offset)));
+                    else if (offset > to_offset)
+                        expected.AddRange(Enumerable.Range(offset, Math.Max(0, Math.Min(to_length - (offset - to_offset), to_length))));
+                    else if (offset + length >= to_offset && offset <= to_offset)
+                        expected.AddRange(Enumerable.Range(to_offset, offset + length - to_offset));
+                    var result = set.CopyIntoRange(to_offset, to_length);
+                    result.SetEquals(expected).Should().BeTrue();
+                    result.Count.Should().Be(expected.Count);
+                }
+                for (var offset = 1; offset <= (length + 1); offset++)
+                {
+                    var set = new IntegerSet(offset, length);
+                    set.Flip();
+                    var expected = new IntegerSet(to_offset, to_length);
+                    if (offset + length >= to_offset + to_length && offset <= to_offset)
+                        expected.AddRange(Enumerable.Range(to_offset, Math.Min(to_length, offset + length - to_offset)));
+                    else if (offset > to_offset)
+                        expected.AddRange(Enumerable.Range(offset, Math.Max(0, Math.Min(to_length - (offset - to_offset), to_length))));
+                    var result = set.CopyIntoRange(to_offset, to_length);
+                    result.SetEquals(expected).Should().BeTrue();
+                    result.Count.Should().Be(expected.Count);
+                }
             }
         }
 
@@ -97,7 +117,28 @@ namespace Kelson.Common.DataStructures.Tests
             result.SequenceEqual(new int[] { 90, 101 })
                 .Should()
                 .BeTrue();
+
+            seta = new IntegerSet(0, 20) { 1, 3, 5, 7, 9, 11, 13, 15, 17, 19 };
+            setb = new IntegerSet(6, 10) { 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+
+            seta.ExceptWith(setb);
+            result = seta.ToList();
+            result.SequenceEqual(new int[] { 1, 3, 5, 17, 19 })
+                  .Should()
+                  .BeTrue();
+
+            seta = new IntegerSet(-4, 61) { -2, 0, 1, 3, 5, 6, 7, 8, 9, 11, 13, 17, 19, 20, 21, 22, 24, 27, 28, 31, 34, 36, 37, 38, 39, 40, 42, 44, 46, 48, 55, 56 };
+            setb = new IntegerSet(11, 38) { 12, 13, 15, 16, 17, 19, 21, 25, 26, 27, 28, 29, 30, 31, 32, 33, 36, 39, 40, 41, 42, 43, 44, 45, 46, 47 };
+
+            seta.ExceptWith(setb);
+            result = seta.ToList();
+            result.SequenceEqual(new int[] { -2, 0, 1, 3, 5, 6, 7, 8, 9, 11, 20, 22, 24, 34, 37, 38, 48, 55, 56 })
+                  .Should()
+                  .BeTrue();
         }
+
+        // -2,0,1,3,5,6,7,8,9,11,13,17,19,20,21,22,24,27,28,31,34,36,37,38,39,40,42,44,46,48,55,56
+        // 12,13,15,16,17,19,21,25,26,27,28,29,30,31,32,33,36,39,40,41,42,43,44,45,46,47
 
         const int EXCLUSION_RANDOM_ITERS = 50;
         [Fact]

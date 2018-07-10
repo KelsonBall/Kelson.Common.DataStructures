@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace Kelson.Common.DataStructures.Sets
@@ -10,7 +11,7 @@ namespace Kelson.Common.DataStructures.Sets
     /// </summary>
     public class IntegerSet : ISet<int>
     {
-        private readonly ImmutableSet64[] data;
+        private ImmutableSet64[] data;
         private int offset;
         private readonly int length;
 
@@ -18,7 +19,7 @@ namespace Kelson.Common.DataStructures.Sets
         {
             offset = start;
             this.length = length;
-            data = new ImmutableSet64[(length >> 6) + 1];
+            data = new ImmutableSet64[((length - 1) >> 6) + 1];
         }
 
         protected IntegerSet(ImmutableSet64[] data, int offset)
@@ -48,18 +49,51 @@ namespace Kelson.Common.DataStructures.Sets
 
         public static IntegerSet operator >>(IntegerSet set, int displacement) => set.Shifted(displacement);
 
-        const int BLOCK_SIZE = sizeof(ulong);
+        public void Flip()
+        {
+            for (int i = 0; i < data.Length; i++)
+            {
+                var count = data[i].Count;
+                data[i] = ~data[i];
+                Count += data[i].Count - count;
+            }
+        }
+
+        const int BLOCK_SIZE = 64;
         public IntegerSet CopyIntoRange(int newOffset, int newLength)
         {
+            if (newOffset + newLength < offset || newOffset > offset + length)
+                return new IntegerSet(newOffset, 0);
             var newSet = new IntegerSet(newOffset, newLength);
+
+            int i = 0;
+            foreach (var block in ShiftedSets(newOffset, newLength))
+            {
+                newSet.data[i++] = block;
+                newSet.Count += block.Count;
+            }
+            return newSet;
+        }
+
+        public IEnumerable<ImmutableSet64> ShiftedSets(int newOffset, int newLength)
+        {
+            var block_count = ((newLength - 1) >> 6) + 1;
             var difference = offset - newOffset;
             var block_shift = difference / BLOCK_SIZE;
             var bit_shift = difference % BLOCK_SIZE;
-            for (int block = 0; block < data.Length; block++)
+            for (int block = 0; block < data.Length && block < block_count; block++)
             {
-                var aligned = 
+                if (block - block_shift < 0 || block - block_shift > data.Length - 1)
+                    continue;
+
+                var value_set = data[block - block_shift];
+                var adjacent = new ImmutableSet64();
+                if (block_shift <= 0 && bit_shift <= 0 && block - block_shift + 1 < data.Length)
+                    adjacent = data[block - block_shift + 1];
+                else if (block_shift >= 0 && bit_shift >= 0 && block - block_shift - 1 > 0)
+                    adjacent = data[block - block_shift - 1];
+                yield return value_set.Shift(bit_shift, adjacent);
             }
-            return newSet;
         }
 
         public bool Add(int item)
@@ -82,20 +116,20 @@ namespace Kelson.Common.DataStructures.Sets
 
         void ICollection<int>.Add(int item) => Add(item);
 
-        void ICollection<int>.Clear()
+        public void Clear()
         {
             for (int i = 0; i < data.Length; i++)
                 data[i] = new ImmutableSet64();
             Count = 0;
         }
 
-        bool ICollection<int>.Contains(int item)
+        public bool Contains(int item)
         {
             var i = item - offset;
             return data[BlockIndex(i)].Contains(BitIndex(i));
         }
 
-        void ICollection<int>.CopyTo(int[] array, int arrayIndex)
+        public void CopyTo(int[] array, int arrayIndex)
         {
             int i = arrayIndex;
             foreach (var item in this)
@@ -143,26 +177,15 @@ namespace Kelson.Common.DataStructures.Sets
             }
             else
             {
-                var block_offset = (offset - other.offset) / 64;
-                var bit_offset = -((offset - other.offset) % 64);
-                for (int block = 0; block < data.Length && block + block_offset < other.data.Length; block++)
-                {
-                    if (block + block_offset < 0)
-                        continue;
-                    var a = data[block];
-                    var b = other.data[block + block_offset];
-                    var c = new ImmutableSet64();
-                    if (bit_offset > 0 && (block + block_offset) - 1 >= 0)
-                        c = other.data[block + block_offset - 1];
-                    else if ((block + block_offset) + 1 < other.data.Length)
-                        c = other.data[block + block_offset + 1];
-                    var aligned_b = b.Shift(bit_offset, c);
-
-                    var count = data[block].Count;
-                    data[block] = a.Except(aligned_b);
-                    Count += data[block].Count - count;
-                    var removed = a.Intersect(aligned_b);
-                }
+                ExceptWith(other.CopyIntoRange(offset, length));
+                //int i = 0;
+                //foreach (var block in other.ShiftedSets(offset, length))
+                //{
+                //    var count = data[i].Count;
+                //    data[i] = data[i].Except(block);
+                //    Count += data[i].Count - count;
+                //    i++;
+                //}
             }
         }
 
@@ -263,22 +286,30 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool Overlaps(IntegerSet other)
         {
-            Guard(other);
-            for (int i = 0; i < data.Length; i++)
-                if (data[i].Overlaps(other.data[i]))
-                    return true;
-            return false;
+            if (Guard(other))
+            {
+                for (int i = 0; i < data.Length; i++)
+                    if (data[i].Overlaps(other.data[i]))
+                        return true;
+                return false;
+            }
+            else
+                return Overlaps(other.CopyIntoRange(offset, length));
         }
 
         public bool Remove(int item)
         {
-            throw new NotImplementedException();
+            var i = item - offset;
+            if (data[BlockIndex(i)].Contains(BitIndex(i)))
+            {
+                Count--;
+                data[BlockIndex(i)] = data[BlockIndex(i)].Remove(i);
+                return true;
+            }
+            return false;
         }
 
-        public bool SetEquals(IEnumerable<int> other)
-        {
-            throw new NotImplementedException();
-        }
+        public bool SetEquals(IEnumerable<int> other) => other.OrderBy(i => i).SequenceEqual(this);
 
         public bool SymmetricExceptWith(IEnumerable<int> other)
         {

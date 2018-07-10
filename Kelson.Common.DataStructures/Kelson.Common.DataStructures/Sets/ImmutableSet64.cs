@@ -102,6 +102,8 @@ namespace Kelson.Common.DataStructures.Sets
             }
         }
 
+        public static ImmutableSet64 operator ~(ImmutableSet64 set) => (ImmutableSet64)~set.values;
+
         IImmutableSet<int> IImmutableSet<int>.Add(int value)
         {
             Guard(value);

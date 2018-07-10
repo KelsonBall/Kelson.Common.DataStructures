@@ -20,6 +20,24 @@ namespace Kelson.Common.DataStructures.Tests
                     set.Contains(i).Should().BeFalse();
         }
 
+        [Fact]
+        public void CopyToRange()
+        {
+            for (var offset = -100; offset <= 100; offset++)
+            {
+                var set = new IntegerSet(offset, 128);
+                set.Flip();
+                var expected = new IntegerSet(0, 64);
+                if (offset < 0)
+                    expected.AddRange(Enumerable.Range(0, Math.Min(64, offset + 128)));
+                else if (offset < 64)
+                    expected.AddRange(Enumerable.Range(offset, 64 - offset));
+                var result = set.CopyIntoRange(0, 64);
+                result.SetEquals(expected).Should().BeTrue();
+                result.Count.Should().Be(expected.Count);
+            }
+        }
+
 
         [Fact]
         public void EnumerateItems()
@@ -91,12 +109,12 @@ namespace Kelson.Common.DataStructures.Tests
                 var counta = r.Next() % 30 + 35;
                 var offseta = (r.Next() % 100) - 50;
                 var lengtha = (r.Next() % 100) + 50;
-                var itemsa = Enumerable.Range(0, counta).Select(_ => (r.Next() & lengtha) + offseta).Distinct().OrderBy(v => v).ToList();
+                var itemsa = Enumerable.Range(0, counta).Select(_ => (r.Next() % lengtha) + offseta).Distinct().OrderBy(v => v).ToList();
 
                 var countb = counta + (r.Next() % 70) - 35;
                 var offsetb = offseta + (r.Next() % 70) - 35;
                 var lengthb = lengtha + (r.Next() % 70) - 35;
-                var itemsb = Enumerable.Range(0, countb).Select(_ => (r.Next() & lengthb) + offsetb).Distinct().OrderBy(v => v).ToList();
+                var itemsb = Enumerable.Range(0, countb).Select(_ => (r.Next() % lengthb) + offsetb).Distinct().OrderBy(v => v).ToList();
 
                 var seta = new IntegerSet(offseta, lengtha);
                 seta.AddRange(itemsa);

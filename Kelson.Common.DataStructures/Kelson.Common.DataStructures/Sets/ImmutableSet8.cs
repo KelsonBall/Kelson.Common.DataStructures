@@ -39,6 +39,8 @@ namespace Kelson.Common.DataStructures.Sets
                 throw new IndexOutOfRangeException($"Index {index} is out of {nameof(ImmutableSet8)} range of [0,7]");
         }
 
+        public bool this[int value] => Contains(value);
+
         /// <summary>
         /// Shift a set in a positive or negative direction
         /// </summary>

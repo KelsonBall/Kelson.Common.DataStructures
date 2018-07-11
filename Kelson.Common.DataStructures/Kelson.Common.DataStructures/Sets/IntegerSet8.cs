@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace Kelson.Common.DataStructures.Sets
 {
@@ -12,15 +11,29 @@ namespace Kelson.Common.DataStructures.Sets
     /// </summary>
     public class IntegerSet : ISet<int>
     {
+        const int BLOCK_SIZE = 8;
+        const int BLOCK_SHIFT = 3;
+
+        private int BlockIndex(int i) => i >> BLOCK_SHIFT;
+        private int BitIndex(int i) => i % BLOCK_SIZE;
+
         private ImmutableSet8[] data;
-        private int offset;
+        private readonly ImmutableSet8 front_mask;
+        private readonly ImmutableSet8 end_mask;
+        private readonly int offset;
+        private readonly int sub_block_offset;
+        private readonly int block_offset;
         private readonly int length;
+        private readonly int last_value;
 
         public IntegerSet(int start, int length)
         {
             offset = start;
             this.length = length;
-            data = new ImmutableSet8[((length - 1) >> 3) + 1];
+            last_value = offset + length;
+            sub_block_offset = BitIndex(start);
+            block_offset = -BlockIndex(start);
+            data = new ImmutableSet8[BlockIndex(start + length) - BlockIndex(start) + 1];
         }
 
         protected IntegerSet(ImmutableSet8[] data, int offset)
@@ -31,24 +44,20 @@ namespace Kelson.Common.DataStructures.Sets
                 Count += data[i].Count;
         }
 
-        private int BlockIndex(int i) => i >> 3;
-        private int BitIndex(int i) => i % 8;
+        public bool this[int value]
+        {
+            get
+            {
+                if (Guard(value))
+                    return data[BlockIndex(value) - sub_block_offset][BitIndex(value)];
+                else
+                    throw new IndexOutOfRangeException();
+            }
+        }
 
         public int Count { get; private set; }
 
-        bool ICollection<int>.IsReadOnly => throw new NotImplementedException();
-
-        /// <summary>
-        /// !!Mixed mutability operation!!
-        /// Returns a set with a reference to the same data but with all values shifted by the displacement value
-        /// </summary>
-        /// <param name="displacement"></param>
-        /// <returns></returns>
-        public IntegerSet Shifted(int displacement) => new IntegerSet(data, offset + displacement);
-
-        public static IntegerSet operator <<(IntegerSet set, int displacement) => set.Shifted(-displacement);
-
-        public static IntegerSet operator >>(IntegerSet set, int displacement) => set.Shifted(displacement);
+        bool ICollection<int>.IsReadOnly => false;
 
         public void Flip()
         {
@@ -60,7 +69,6 @@ namespace Kelson.Common.DataStructures.Sets
             }
         }
 
-        const int BLOCK_SIZE = 8;
         public IntegerSet CopyIntoRange(int newOffset, int newLength)
         {
             if (newOffset + newLength < offset || newOffset > offset + length)
@@ -81,26 +89,17 @@ namespace Kelson.Common.DataStructures.Sets
         public IEnumerable<ImmutableSet8> ShiftedSets(int newOffset, int newLength)
         {
             var difference = offset - newOffset;
-            //var block_shift = difference / BLOCK_SIZE;
-            //var bit_shift = (Math.Abs(difference) % BLOCK_SIZE);
-            //if (difference < 0)
-            //    bit_shift = -bit_shift;
-
+            var bit_index_in_new_range = Math.Abs(offset - newOffset) % BLOCK_SIZE;
+            var start_block_offset = (offset - newOffset) / BLOCK_SIZE;
             for (int i = 0; i <= data.Length; i++)
             {
                 var current = i < data.Length ? data[i] : new ImmutableSet8();
-
                 var value = (i * BLOCK_SIZE) + offset;
-
                 if (value >= newOffset + newLength)
                     yield break;
-
-                var block_index_in_new_range = ((value - newOffset) / BLOCK_SIZE);
-                var bit_index_in_new_range = Math.Abs(value - newOffset) % BLOCK_SIZE;
-
+                var block_index_in_new_range = start_block_offset + i;
                 if (block_index_in_new_range < 0)
                     continue;
-
                 if (bit_index_in_new_range == 0)
                     yield return current;
                 else if (difference < 0)
@@ -108,20 +107,6 @@ namespace Kelson.Common.DataStructures.Sets
                 else
                     yield return current.Shift(bit_index_in_new_range, i > 0 ? data[i - 1] : new ImmutableSet8());
             }
-
-            //for (int origin_block = 0; origin_block < data.Length && origin_block < block_count; origin_block++)
-            //{
-            //    if (origin_block - block_shift < 0 || origin_block - block_shift > data.Length - 1)
-            //        continue;
-
-            //    var value_set = data[origin_block - block_shift];
-            //    var adjacent = new ImmutableSet8();
-            //    if (block_shift <= 0 && bit_shift <= 0 && origin_block - block_shift + 1 < data.Length)
-            //        adjacent = data[origin_block - block_shift + 1];
-            //    else if (block_shift >= 0 && bit_shift >= 0 && origin_block - block_shift - 1 > 0)
-            //        adjacent = data[origin_block - block_shift - 1];
-            //    yield return value_set.Shift(bit_shift, adjacent);
-            //}
         }
 
         public bool Add(int item)
@@ -174,7 +159,7 @@ namespace Kelson.Common.DataStructures.Sets
         }
 
         private bool Guard(IntegerSet other) => (other.offset == offset && other.length == length);
-
+        private bool Guard(int value) => value >= offset && value <= last_value;
         void ISet<int>.ExceptWith(IEnumerable<int> other)
         {
             if (other is IntegerSet set)
@@ -206,14 +191,6 @@ namespace Kelson.Common.DataStructures.Sets
             else
             {
                 ExceptWith(other.CopyIntoRange(offset, length));
-                //int i = 0;
-                //foreach (var block in other.ShiftedSets(offset, length))
-                //{
-                //    var count = data[i].Count;
-                //    data[i] = data[i].Except(block);
-                //    Count += data[i].Count - count;
-                //    i++;
-                //}
             }
         }
 
@@ -353,7 +330,7 @@ namespace Kelson.Common.DataStructures.Sets
         {
             for (int i = 0; i < data.Length; i++)
             {
-                int block = i << 3;
+                int block = i << BLOCK_SHIFT;
                 foreach (var item in data[i])
                     yield return block + item + offset;
             }

@@ -7,88 +7,39 @@ using System.Runtime.CompilerServices;
 namespace Kelson.Common.DataStructures.Sets
 {
     /// <summary>
-    /// SIMD accelerated Set of integers within a bounded range
+    /// A set of whole numbers
     /// </summary>
-    public class IntegerSet : ISet<int>
+    public class WholeSet : ISet<int>
     {
-        const int BLOCK_SIZE = 8;
-        const int BLOCK_SHIFT = 3;
+        public int Capacity { get; private set; }
+        public int Count { get; private set; }
+
+        public bool IsReadOnly => throw new NotImplementedException();
+
+        const int BLOCK_SIZE = 64;
+        const int BLOCK_SHIFT = 6;
 
         private int BlockIndex(int i) => i >> BLOCK_SHIFT;
         private int BitIndex(int i) => i % BLOCK_SIZE;
 
-        private ImmutableSet8[] data;
-        private readonly ImmutableSet8 front_mask;
-        private readonly ImmutableSet8 end_mask;
-        private readonly int offset;
-        private readonly int sub_block_offset;
-        private readonly int block_offset;
-        private readonly int length;
-        private readonly int last_value;
+        private readonly List<ImmutableSet64> data;
 
-        public IntegerSet(int start, int length)
+        public WholeSet()
         {
-            offset = start;
-            this.length = length;
-            last_value = offset + length;
-            sub_block_offset = BitIndex(start);
-            block_offset = -BlockIndex(start);
-            data = new ImmutableSet8[BlockIndex(start + length) - BlockIndex(start) + 1];
+            data = new List<ImmutableSet64>();
         }
 
-        protected IntegerSet(ImmutableSet8[] data, int offset)
+        private int ConfirmLength(int item)
         {
-            this.data = data;
-            this.offset = offset;
-            for (int i = 0; i < data.Length; i++)
-                Count += data[i].Count;
-        }
-
-        public bool this[int value]
-        {
-            get
-            {
-                if (Guard(value))
-                    return data[BlockIndex(value) - sub_block_offset][BitIndex(value)];
-                else
-                    throw new IndexOutOfRangeException();
-            }
-        }
-
-        public int Count { get; private set; }
-
-        bool ICollection<int>.IsReadOnly => false;
-
-        public void Flip()
-        {
-            for (int i = 0; i < data.Length; i++)
-            {
-                var count = data[i].Count;
-                data[i] = ~data[i];
-                Count += data[i].Count - count;
-            }
-        }
-
-        public IntegerSet CopyIntoRange(int newOffset, int newLength)
-        {
-            if (newOffset + newLength < offset || newOffset > offset + length)
-                return new IntegerSet(newOffset, 0);
-            var newSet = new IntegerSet(newOffset, newLength);
-
-            int i = Math.Max(0, (offset - newOffset) / BLOCK_SIZE);
-            foreach (var block in ShiftedSets(newOffset, newLength))
-            {
-                if (i == newSet.data.Length)
-                    break;
-                newSet.data[i++] = block;
-                newSet.Count += block.Count;
-            }
-            return newSet;
+            var index = BlockIndex(item);
+            while (data.Count <= index)
+                data.Add(new ImmutableSet64());
+            return item;
         }
 
         public bool Add(int item)
         {
-            var i = item - offset;
+            var i = ConfirmLength(item);
             if (data[BlockIndex(i)].Contains(BitIndex(i)))
                 return false;
             data[BlockIndex(i)] = data[BlockIndex(i)].Add(BitIndex(i));
@@ -108,14 +59,14 @@ namespace Kelson.Common.DataStructures.Sets
 
         public void Clear()
         {
-            for (int i = 0; i < data.Length; i++)
-                data[i] = new ImmutableSet8();
+            for (int i = 0; i < data.Count; i++)
+                data[i] = new ImmutableSet64();
             Count = 0;
         }
 
         public bool Contains(int item)
         {
-            var i = item - offset;
+            var i = ConfirmLength(item);
             return data[BlockIndex(i)].Contains(BitIndex(i));
         }
 
@@ -129,23 +80,21 @@ namespace Kelson.Common.DataStructures.Sets
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool InRange(int value)
         {
-            var i = value - offset;
-            if (BlockIndex(i) > data.Length || i < 0)
+            var i = ConfirmLength(value);
+            if (BlockIndex(i) > data.Count || i < 0)
                 return false;
             return true;
         }
 
-        private bool Guard(IntegerSet other) => (other.offset == offset && other.length == length);
-        private bool Guard(int value) => value >= offset && value <= last_value;
         void ISet<int>.ExceptWith(IEnumerable<int> other)
         {
-            if (other is IntegerSet set)
+            if (other is WholeSet set)
                 ExceptWith(set);
             else
             {
                 foreach (var item in other)
                 {
-                    var i = item - offset;
+                    var i = ConfirmLength(item);
                     var index = BlockIndex(i);
                     var count = data[index].Count;
                     data[index] = data[index].Remove(BitIndex(i));
@@ -154,49 +103,40 @@ namespace Kelson.Common.DataStructures.Sets
             }
         }
 
-        public void ExceptWith(IntegerSet other)
+        public void ExceptWith(WholeSet other)
         {
-            if (Guard(other))
+            for (int i = 0; i < data.Count && i < other.data.Count; i++)
             {
-                for (int i = 0; i < data.Length; i++)
-                {
-                    var count = data[i].Count;
-                    data[i] = data[i].Except(other.data[i]);
-                    Count += data[i].Count - count;
-                }
-            }
-            else
-            {
-                ExceptWith(other.CopyIntoRange(offset, length));
+                var count = data[i].Count;
+                data[i] = data[i].Except(other.data[i]);
+                Count += data[i].Count - count;
             }
         }
 
         void ISet<int>.IntersectWith(IEnumerable<int> other)
         {
-            var otherSet = new IntegerSet(offset, length);
+            var otherSet = new WholeSet();
             otherSet.AddRange(other);
             IntersectWith(otherSet);
         }
 
-        public void IntersectWith(IntegerSet other)
+        public void IntersectWith(WholeSet other)
         {
-            Guard(other);
-            for (int i = 0; i < data.Length; i++)
+            for (int i = 0; i < data.Count && i < other.data.Count; i++)
                 data[i] = data[i].Intersect(other.data[i]);
         }
 
         public bool IsProperSubsetOf(IEnumerable<int> other)
         {
-            var otherSet = new IntegerSet(offset, length);
+            var otherSet = new WholeSet();
             otherSet.AddRange(other);
             return IsProperSubsetOf(otherSet);
         }
 
-        public bool IsProperSubsetOf(IntegerSet other)
+        public bool IsProperSubsetOf(WholeSet other)
         {
-            Guard(other);
             bool hasProperSubset = false;
-            for (int i = 0; i < data.Length; i++)
+            for (int i = 0; i < data.Count && i < other.data.Count; i++)
             {
                 if (!hasProperSubset)
                     hasProperSubset = data[i].IsProperSubsetOf(other.data[i]);
@@ -208,16 +148,15 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool IsProperSupersetOf(IEnumerable<int> other)
         {
-            var otherSet = new IntegerSet(offset, length);
+            var otherSet = new WholeSet();
             otherSet.AddRange(other);
             return IsProperSupersetOf(otherSet);
         }
 
-        public bool IsPropertSupersetOf(IntegerSet other)
+        public bool IsPropertSupersetOf(WholeSet other)
         {
-            Guard(other);
             bool hasProperSuperset = false;
-            for (int i = 0; i < data.Length; i++)
+            for (int i = 0; i < data.Count && i < other.data.Count; i++)
             {
                 if (!hasProperSuperset)
                     hasProperSuperset = data[i].IsProperSupersetOf(other.data[i]);
@@ -229,15 +168,14 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool IsSubsetOf(IEnumerable<int> other)
         {
-            var otherSet = new IntegerSet(offset, length);
+            var otherSet = new WholeSet();
             otherSet.AddRange(other);
             return IsSubsetOf(otherSet);
         }
 
-        public bool IsSubsetOf(IntegerSet other)
+        public bool IsSubsetOf(WholeSet other)
         {
-            Guard(other);
-            for (int i = 0; i < data.Length; i++)
+            for (int i = 0; i < data.Count && i < other.data.Count; i++)
                 if (!data[i].IsSubsetOf(other.data[i]))
                     return false;
             return true;
@@ -245,15 +183,14 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool IsSupersetOf(IEnumerable<int> other)
         {
-            var otherSet = new IntegerSet(offset, length);
+            var otherSet = new WholeSet();
             otherSet.AddRange(other);
             return IsSupersetOf(otherSet);
         }
 
-        public bool IsSupersetOf(IntegerSet other)
+        public bool IsSupersetOf(WholeSet other)
         {
-            Guard(other);
-            for (int i = 0; i < data.Length; i++)
+            for (int i = 0; i < data.Count && i < other.data.Count; i++)
                 if (!data[i].IsSupersetOf(other.data[i]))
                     return false;
             return true;
@@ -261,27 +198,22 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool Overlaps(IEnumerable<int> other)
         {
-            var otherSet = new IntegerSet(offset, length);
+            var otherSet = new WholeSet();
             otherSet.AddRange(other);
             return Overlaps(otherSet);
         }
 
-        public bool Overlaps(IntegerSet other)
+        public bool Overlaps(WholeSet other)
         {
-            if (Guard(other))
-            {
-                for (int i = 0; i < data.Length; i++)
-                    if (data[i].Overlaps(other.data[i]))
-                        return true;
-                return false;
-            }
-            else
-                return Overlaps(other.CopyIntoRange(offset, length));
+            for (int i = 0; i < data.Count && i < other.data.Count; i++)
+                if (data[i].Overlaps(other.data[i]))
+                    return true;
+            return false;
         }
 
         public bool Remove(int item)
         {
-            var i = item - offset;
+            var i = ConfirmLength(item);
             if (data[BlockIndex(i)].Contains(BitIndex(i)))
             {
                 Count--;
@@ -305,11 +237,11 @@ namespace Kelson.Common.DataStructures.Sets
 
         IEnumerator<int> IEnumerable<int>.GetEnumerator()
         {
-            for (int i = 0; i < data.Length; i++)
+            for (int i = 0; i < data.Count; i++)
             {
-                int block = i << BLOCK_SHIFT;
+                int block = i << 6;
                 foreach (var item in data[i])
-                    yield return block + item + offset;
+                    yield return block + item;
             }
         }
 

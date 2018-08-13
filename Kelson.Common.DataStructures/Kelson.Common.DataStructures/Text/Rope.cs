@@ -4,8 +4,8 @@ using System.Text;
 
 namespace Kelson.Common.DataStructures.Text
 {
-    public class Rope
-    {
-        private Rope() { }
-    }
+    //public class Rope
+    //{
+    //    private Rope() { }
+    //}
 }

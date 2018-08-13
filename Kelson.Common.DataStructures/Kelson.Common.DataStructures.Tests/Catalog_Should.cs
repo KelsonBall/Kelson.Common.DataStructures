@@ -6,8 +6,8 @@ using System.Linq;
 namespace Kelson.Common.DataStructures.Tests
 {
     public class Catalog_Should
-    {
-        Catalog catalog => new Catalog("lorem ipsum dolor sit amet, consectetur");
+    {                                 //0123456789012345678901234567890123456789  
+        SubstringCollection catalog => new SubstringCollection("lorem ipsum dolor sit amet, consectetur");
         [Fact]
         public void ContainSequences()
         {
@@ -18,7 +18,10 @@ namespace Kelson.Common.DataStructures.Tests
         [Fact]
         public void FindSequences()
         {
-            catalog.Occurances("or").SequenceEqual(new int[] { 1, 16 }).Should().BeTrue();
+            catalog.Occurances("or").Should().BeEquivalentTo(new uint[] { 1, 15 });
+            catalog.Occurances("ore").Should().BeEquivalentTo(new uint[] { 1 });
+            catalog.Occurances("ogre").Should().BeEquivalentTo(new uint[0]);
+            catalog.Occurances("consectetur").Should().BeEquivalentTo(new uint[] { 28 });
         }
     }
 }

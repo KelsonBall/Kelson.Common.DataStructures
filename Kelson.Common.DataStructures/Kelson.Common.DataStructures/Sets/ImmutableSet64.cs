@@ -79,6 +79,10 @@ namespace Kelson.Common.DataStructures.Sets
                 throw new IndexOutOfRangeException($"Index {index} is out of {nameof(ImmutableSet64)} range of [0,63]");
         }
 
+        public static ImmutableSet64 operator >>(ImmutableSet64 s, int shift) => s.Shift(shift);
+
+        public static ImmutableSet64 operator <<(ImmutableSet64 s, int shift) => s.Shift(-shift);
+
         /// <summary>
         /// Shift a set in a positive or negative direction
         /// </summary>

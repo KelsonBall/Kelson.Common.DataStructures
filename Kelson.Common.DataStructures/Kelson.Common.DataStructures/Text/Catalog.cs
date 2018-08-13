@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Kelson.Common.DataStructures.Sets;
 
@@ -16,45 +17,53 @@ namespace Kelson.Common.DataStructures.Text
     ///     Contains partial sequences,
     ///         a, aa, aaa, aaaa, aaaaa, aaaaaa, and so on... (large k!)
     /// </summary>
-    public class Catalog
+    public class SubstringCollection
     {
-        private readonly SortedList<char, IntegerSet> chars = new SortedList<char, IntegerSet>();
+        private readonly SortedList<char, UintSet> chars = new SortedList<char, UintSet>();
 
-        public readonly bool CaseSensative;
-        private readonly string text;
+        public readonly bool CaseSensative;        
 
-        public Catalog(string value, bool caseSensative = true)
+        public SubstringCollection(ReadOnlySpan<char> value, bool caseSensative = true)
         {
-            if (value.Length > int.MaxValue)
-                throw new ArgumentException("Too much text");
-            text = value;
-            for (int i = 0; i < text.Length; i++)
+            if (value.Length > short.MaxValue)
+                throw new ArgumentException("Whoa nelly!");            
+            for (int i = 0; i < value.Length; i++)
             {
                 var c = value[i];
                 if (!chars.ContainsKey(c))
-                    chars.Add(c, new IntegerSet(0, value.Length));
-                chars[c].Add(i);
+                    chars[c] = new UintSet();
+                chars[c] = chars[c].Add((uint)i);
             }
         }
 
-        public bool Contains(string sequence) => Occurances(sequence).Any();
+        public bool Contains(ReadOnlySpan<char> sequence) => Occurances(sequence).Any();
 
-        public int Count(string sequence) => Occurances(sequence).Count;
+        public int Count(ReadOnlySpan<char> sequence) => Occurances(sequence).Count;
 
-        public IntegerSet Occurances(string sequence)
+        public IImmutableSet<uint> Occurances(ReadOnlySpan<char> sequence)
         {
-            if (string.IsNullOrEmpty(sequence))
-                return new IntegerSet(0, text.Length);
-            IntegerSet values = chars[sequence[0]];
-            //starts.AddRange()
+            if (sequence.Length == 0)
+                return new UintSet();
+            UintSet locations = chars[sequence[0]];            
             for (int i = 1; i < sequence.Length; i++)
             {
+                if (!chars.ContainsKey(sequence[i]))
+                    return new UintSet();
                 var next = chars[sequence[i]];
-                values.IntersectWith(next << i);
-                if (values.Count == 0)
+                locations = locations.Intersect(next << i);
+                if (locations.Count == 0)
                     break;
             }
-            return values;
+            return locations;
+        }
+    }
+
+    public class Catalog<T>
+    {
+        public IEnumerable<T> this[ReadOnlySpan<char> sequence]
+        {
+            get;
+            set;
         }
     }
 }

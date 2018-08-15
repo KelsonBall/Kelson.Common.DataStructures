@@ -56,14 +56,48 @@ namespace Kelson.Common.DataStructures.Text
             }
             return locations;
         }
-    }
 
-    public class Catalog<T>
-    {
-        public IEnumerable<T> this[ReadOnlySpan<char> sequence]
+        public bool SourceEquals(ReadOnlySpan<char> other)
         {
-            get;
-            set;
+            for (int i = 0; i < other.Length; i++)
+                if (!chars[other[i]].Contains((uint)i))
+                    return false;
+            return true;
         }
     }
+
+    //public class Catalog<T>
+    //{
+    //    private readonly List<(T item, SubstringCollection keys)> data = new List<(T item, SubstringCollection keys)>();        
+
+    //    public IEnumerable<T> AllContaining(ReadOnlySpan<char> sequence)
+    //    {
+    //        foreach (var kvp in data)
+    //            if (kvp.keys.Contains(sequence))
+    //                yield return kvp.item;
+    //    }
+        
+    //    public T this[ReadOnlySpan<char> key]
+    //    {
+    //        get
+    //        {
+    //            foreach (var (item, keys) in data)
+    //                if (keys.SourceEquals(key))
+    //                    return item;
+    //            return default;
+    //        }
+
+    //        set
+    //        {
+    //            if (value == null)
+    //            {
+    //                for (int i = data.Count - 1; i >= 0; i++)
+    //                    if (data[i].keys.SourceEquals(key))
+    //                        data.RemoveAt(i);
+    //            }
+    //            else
+    //                data.Add((value, new SubstringCollection(key)));
+    //        }
+    //    }        
+    //}
 }

@@ -310,9 +310,43 @@ namespace Kelson.Common.DataStructures.Sets
 
         public IEnumerator<int> GetEnumerator()
         {
-            for (int i = 0; i < 64; i++)
-                if (values.IsSet(i))
-                    yield return i;
+            if (values == 0)
+                yield break;
+            
+            // first 4 bytes
+            int v = (int)(values & (~(~0ul << 32)));
+            for (int i = 0; i < 4 && v != 0; i++)
+            {
+                // each byte
+                byte b = (byte)(v & 0xFF);
+                for (int j = 0; j < 8 && b != 0; j++)
+                {
+                    if ((b & 1) == 1)
+                        yield return (i << 3) + j;
+                    b = (byte)(b >> 1);
+                }
+                v = v >> 8;
+            }
+
+            // last 4 bytes
+            v = (int)((values & (~0ul << 32)) >> 32);
+            for (int i = 0; i < 4 && v != 0; i++)
+            {
+                // each byte
+                byte b = (byte)(v & 0xFF);
+                for (int j = 0; j < 8 && b != 0; j++)
+                {
+                    if ((b & 1) == 1)
+                        yield return (i << 3) + j + 32;
+                    b = (byte)(b >> 1);
+                }
+                v = v >> 8;
+            }
+
+            // pure iterative approach
+            //for (int i = 0; i < 64; i++)
+            //    if (values.IsSet(i))
+            //        yield return i;
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

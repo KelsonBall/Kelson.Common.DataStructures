@@ -1,21 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
+using System.Threading.Tasks;
 using Kelson.Common.DataStructures.Sets;
 
 namespace Kelson.Common.DataStructures.Text
 {
     /// <summary>
-    /// Stores case insensiteve location info for characters of simple english text
-    /// Complexity: Roughly O(l*k)
-    ///     l: length of sequence
-    ///     k: ~number of times the sequence occures (including partialy)
-    /// Worse case scenario: long string of the same character, and a sequence that is the same string
-    ///     Example text:    aaaaaaaaaaaaaaaaaaaaaa
-    ///     Example sequnce: aaaaaaaaaaaaaaaaaaaaaa
-    ///     Contains partial sequences,
-    ///         a, aa, aaa, aaaa, aaaaa, aaaaaa, and so on... (large k!)
+    /// Stores character locations in SIMD sets for fast substring search
     /// </summary>
     public class SubstringCollection
     {
@@ -23,81 +15,98 @@ namespace Kelson.Common.DataStructures.Text
 
         public readonly bool CaseSensative;        
 
-        public SubstringCollection(ReadOnlySpan<char> value, bool caseSensative = true)
+        public SubstringCollection(IEnumerable<char> value)
         {
-            if (value.Length > short.MaxValue)
-                throw new ArgumentException("Whoa nelly!");            
-            for (int i = 0; i < value.Length; i++)
-            {
-                var c = value[i];
+            uint i = 0;
+            foreach (var c in value)
+            {                
                 if (!chars.ContainsKey(c))
                     chars[c] = new UintSet();
-                chars[c] = chars[c].Add((uint)i);
+                chars[c] = chars[c].Add(i++);
             }
         }
 
-        public bool Contains(ReadOnlySpan<char> sequence) => Occurances(sequence).Any();
+        public bool Contains(IEnumerable<char> sequence) => Occurances(sequence).Any();
 
-        public int Count(ReadOnlySpan<char> sequence) => Occurances(sequence).Count;
+        public int Count(IEnumerable<char> sequence) => Occurances(sequence).Count;
 
-        public IImmutableSet<uint> Occurances(ReadOnlySpan<char> sequence)
+        public UintSet Occurances(IEnumerable<char> sequence)
         {
-            if (sequence.Length == 0)
+            if (!sequence.Any())
                 return new UintSet();
-            UintSet locations = chars[sequence[0]];            
-            for (int i = 1; i < sequence.Length; i++)
-            {
-                if (!chars.ContainsKey(sequence[i]))
+            if (!chars.ContainsKey(sequence.First()))
+                return new UintSet();
+            UintSet locations = chars[sequence.First()];
+            int i = 1;
+            foreach (var c in sequence.Skip(1))
+            {                
+                if (!chars.ContainsKey(c))
                     return new UintSet();
-                var next = chars[sequence[i]];
-                locations = locations.Intersect(next << i);
+                var next = chars[c];
+                locations = locations.Intersect(next << i++);
+                if (locations.Count == 0)
+                    break;                
+            }
+            return locations;
+        }
+
+        public UintSet Occurances(IEnumerable<char> sequence, UintSet starts)
+        {
+            if (!sequence.Any())
+                return starts;
+            UintSet locations = starts;
+            int i = 0;
+            foreach (var c in sequence)
+            {
+                if (!chars.ContainsKey(c))
+                    return new UintSet();
+                var next = chars[c];
+                locations = locations.Intersect(next << i++);
                 if (locations.Count == 0)
                     break;
             }
             return locations;
         }
 
-        public bool SourceEquals(ReadOnlySpan<char> other)
+        public bool SourceEquals(IEnumerable<char> other)
         {
-            for (int i = 0; i < other.Length; i++)
-                if (!chars[other[i]].Contains((uint)i))
+            uint i = 0;
+            foreach (var c in other)            
+                if (!chars[c].Contains(i++))
                     return false;
             return true;
         }
     }
 
-    //public class Catalog<T>
-    //{
-    //    private readonly List<(T item, SubstringCollection keys)> data = new List<(T item, SubstringCollection keys)>();        
+    public class Catalog<T>
+    {
+        private readonly IDictionary<int, T> data;
+        private readonly IDictionary<int, Task<SubstringCollection>> records;
 
-    //    public IEnumerable<T> AllContaining(ReadOnlySpan<char> sequence)
-    //    {
-    //        foreach (var kvp in data)
-    //            if (kvp.keys.Contains(sequence))
-    //                yield return kvp.item;
-    //    }
-        
-    //    public T this[ReadOnlySpan<char> key]
-    //    {
-    //        get
-    //        {
-    //            foreach (var (item, keys) in data)
-    //                if (keys.SourceEquals(key))
-    //                    return item;
-    //            return default;
-    //        }
+        private readonly Func<T, int> id;
+        private readonly Func<T, string> text;
 
-    //        set
-    //        {
-    //            if (value == null)
-    //            {
-    //                for (int i = data.Count - 1; i >= 0; i++)
-    //                    if (data[i].keys.SourceEquals(key))
-    //                        data.RemoveAt(i);
-    //            }
-    //            else
-    //                data.Add((value, new SubstringCollection(key)));
-    //        }
-    //    }        
-    //}
+        public Catalog(IDictionary<int, T> items, Func<T, string> textSelector)
+            => (data, text, records) = (items, textSelector, items.ToDictionary(kvp => kvp.Key, kvp => Task.Run(() => new SubstringCollection(textSelector(kvp.Value)))));
+
+        public async Task<UintSet> AllContaining(IEnumerable<char> sequence, UintSet included = null)
+        {
+            if (included == null)
+            {
+                UintSet results = new UintSet();
+                foreach (var record in records)
+                    if ((await record.Value).Contains(sequence))
+                        results = results.Add((uint)record.Key);
+                return results;
+            }
+            else
+            {
+                UintSet results = included;
+                foreach (var id in included)
+                    if (!(await records[(int)id]).Contains(sequence))
+                        results = results.Remove(id);
+                return results;
+            }
+        }
+    }
 }

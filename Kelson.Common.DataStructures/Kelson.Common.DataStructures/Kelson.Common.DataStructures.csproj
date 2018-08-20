@@ -2,6 +2,17 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Kelson Ball</Authors>
+    <Version>0.1.0</Version>
+    <Company>Kelson Software</Company>
+    <Description>A collection of specialized datastructures</Description>
+    <PackageLicenseUrl>https://opensource.org/licenses/MIT</PackageLicenseUrl>
+    <PackageIconUrl>https://avatars2.githubusercontent.com/u/7193540</PackageIconUrl>
+    <RepositoryUrl>https://github.com/KelsonBall/Kelson.Common.DataStructures</RepositoryUrl>
+    <PackageProjectUrl>https://kelsonball.github.io/Kelson.Common/</PackageProjectUrl>
+    <Copyright>Kelson Ball 2018</Copyright>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">

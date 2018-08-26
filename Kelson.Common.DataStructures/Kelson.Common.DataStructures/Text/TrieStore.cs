@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Kelson.DataStructures
+namespace Kelson.Common.DataStructures.Text
 {
     public class Trie<T> : Trie
     {
@@ -42,6 +42,9 @@ namespace Kelson.DataStructures
         }
 
         public new Adder Add(string key) => new Adder(v => Add(key, v));
+
+        public void Clear() => nodes.Clear();
+        
 
         public Trie(Predicate<string> validation = null) : base(validation) { }
     }

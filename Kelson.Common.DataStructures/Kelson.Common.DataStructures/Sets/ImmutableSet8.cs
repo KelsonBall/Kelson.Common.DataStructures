@@ -32,6 +32,8 @@ namespace Kelson.Common.DataStructures.Sets
 
         public bool IsEmpty => values == 0;
 
+        public bool IsFull => values == byte.MaxValue;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void Guard(int index)
         {

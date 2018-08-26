@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Linq;
 
 namespace Kelson.Common.DataStructures.Sets
-{
+{    
     public class UintSet : IImmutableSet<uint>
     {
         private readonly ImmutableSet64[] sets;
@@ -153,6 +153,17 @@ namespace Kelson.Common.DataStructures.Sets
         public IImmutableSet<uint> Clear() => new UintSet();
         
         public bool Contains(uint value) => sets[block(value)].Contains((int)value - block(value));
+
+        public bool ContainsRange(uint start, uint end)
+        {
+            throw new NotImplementedException();
+            for (int i = 0; i < sets.Length; i++)
+            {
+                int block_start = i << 6;
+                if (block_start < start)
+                    continue;                
+            }
+        }
 
         public IImmutableSet<uint> Except(IEnumerable<uint> other) => Except(new UintSet(other));
 

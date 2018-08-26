@@ -1,5 +1,5 @@
 ﻿using FluentAssertions;
-using Kelson.DataStructures;
+using Kelson.Common.DataStructures.Text;
 using System;
 using System.Linq;
 using Xunit;
@@ -12,24 +12,64 @@ namespace Kelson.Common.DataStructures.Tests
         public void TrackTerminalCount()
         {
             var trie = new Trie()
-                .Add("alpaca")
-                .Add("dog")
-                .Add("dot")
-                .Add("ducks")
-                .Add("duck");
+            {
+                "alpaca",
+                "dog",
+                "dot",
+                "ducks",
+                "duck"
+            };
 
             trie.Count.Should().Be(5);
         }
 
         [Fact]
-        public void TrackUniquePrefixes()
+        public void RemoveItems()
         {
             var trie = new Trie()
-                .Add("alpaca")
-                .Add("dog")
-                .Add("dot")
-                .Add("ducks")
-                .Add("duck");
+            {
+                "alpaca",
+                "dog",
+                "dot",
+                "ducks",
+                "duck"
+            };
+
+            trie.Remove("dog");
+
+            trie.Count.Should().Be(4);
+        }
+
+        [Fact]
+        public void RemoveItemContainsDescendent()
+        {
+            var trie = new Trie()
+            {
+                "alpaca",
+                "dog",
+                "dot",
+                "ducks",
+                "duck"
+            };
+
+            trie.Remove("duck");
+
+            trie.Count.Should().Be(4);
+
+            trie.Should().BeEquivalentTo(new string[] { "alpaca", "dog", "dot", "ducks" });
+        }
+
+        [Fact]
+        public void TrackUniquePrefixes()
+        {
+            var trie = new Trie
+            {
+                "alpaca",
+                "dog",
+                "dot",
+                "ducks",
+                "duck",
+            };
 
             var prefixes = trie.Prefixes().ToList();
 
@@ -39,12 +79,14 @@ namespace Kelson.Common.DataStructures.Tests
         [Fact]
         public void TrackValues()
         {
-            var trie = new Trie()
-                .Add("alpaca")
-                .Add("dog")
-                .Add("dot")
-                .Add("ducks")
-                .Add("duck");
+            var trie = new Trie
+            {
+                "alpaca",
+                "dog",
+                "dot",
+                "ducks",
+                "duck",
+            };
 
             var values = trie.Values().ToList();
 
@@ -54,12 +96,14 @@ namespace Kelson.Common.DataStructures.Tests
         [Fact]
         public void FilterPrefixes()
         {
-            var trie = new Trie()
-                .Add("alpaca")
-                .Add("dog")
-                .Add("dot")
-                .Add("ducks")
-                .Add("dunes");
+            var trie = new Trie
+            {
+                "alpaca",
+                "dog",
+                "dot",
+                "ducks",
+                "dunes",
+            };
 
             var prefixes = trie.Prefixes("du").ToList();
 
@@ -69,12 +113,14 @@ namespace Kelson.Common.DataStructures.Tests
         [Fact]
         public void FilterValues()
         {
-            var trie = new Trie()
-                .Add("alpaca")
-                .Add("dog")
-                .Add("dot")
-                .Add("ducks")
-                .Add("dunes");
+            var trie = new Trie
+            {
+                "alpaca",
+                "dog",
+                "dot",
+                "ducks",
+                "dunes",
+            };
 
             var values = trie.Values("du").ToList();
 
@@ -84,12 +130,14 @@ namespace Kelson.Common.DataStructures.Tests
         [Fact]
         public void FilterValues_EmptyWhenNoneWithPrefix()
         {
-            var trie = new Trie()
-                .Add("alpaca")
-                .Add("dog")
-                .Add("dot")
-                .Add("ducks")
-                .Add("dunes");
+            var trie = new Trie
+            {
+                "alpaca",
+                "dog",
+                "dot",
+                "ducks",
+                "dunes",
+            };
 
             var values = trie.Values("de").ToList();
 

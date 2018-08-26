@@ -1,11 +1,12 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Kelson.Common.Trees;
 
-namespace Kelson.DataStructures
+namespace Kelson.Common.DataStructures.Text
 {
-    public class Trie
+    public class Trie : IEnumerable<string>
     {
         public int Count { get; protected set; }
 
@@ -25,10 +26,10 @@ namespace Kelson.DataStructures
             get => string.IsNullOrEmpty(key) ? Enumerable.Empty<string>() : values(key).Select(v => v.Prefix);
         }
 
-        public Trie Add(string key)
+        public void Add(string key)
         {
             if (!validate(key))
-                return this;
+                return;
             if (!nodes.ContainsKey(key[0]))
             {
                 nodes[key[0]] = new TrieNode(key, 0);
@@ -39,8 +40,19 @@ namespace Kelson.DataStructures
                 if (nodes[key[0]].Append(key, 0))
                     Count++;
             }
-            return this;
+            return;
         }
+
+        public void Remove(string key)
+        {
+            if (nodes.ContainsKey(key[0]))            
+                if (nodes[key[0]].Remove(key, 0).decrementTerminals)
+                    Count--;            
+        }
+
+        public IEnumerator<string> GetEnumerator() => Values().GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         private protected readonly SortedList<char, TrieNode> nodes = new SortedList<char, TrieNode>();
         protected readonly Predicate<string> validate;
@@ -111,6 +123,37 @@ namespace Kelson.DataStructures
                         TerminalDescendents++;
                         return true;
                     }
+                }
+            }
+
+            public (bool decrementTerminals, bool remove) Remove(string data, int index)
+            {
+                if (index == data.Length - 1)
+                {
+                    if (IsTerminal)
+                    {
+                        IsTerminal = false;
+                        Payload = null;
+                        if (Children.Count == 0)
+                            return (true, true);
+                        else
+                            return (true, false);
+                    }
+                    else                    
+                        return (false, false);                    
+                }
+                else
+                {
+                    var (decrementTerminals, remove) = Children[data[index + 1]].Remove(data, index + 1);
+                    if (decrementTerminals)
+                    {
+                        TerminalDescendents--;
+                        if (remove)
+                            Children.Remove(data[index + 1]);
+                        return (true, false);
+                    }                    
+                    else
+                        return (false, false);                    
                 }
             }
 

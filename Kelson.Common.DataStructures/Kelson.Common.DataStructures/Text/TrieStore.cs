@@ -32,7 +32,7 @@ namespace Kelson.Common.DataStructures.Text
             return this;
         }
 
-        public class Adder
+        public readonly ref struct Adder
         {
             private readonly Func<T, Trie<T>> add;            
 

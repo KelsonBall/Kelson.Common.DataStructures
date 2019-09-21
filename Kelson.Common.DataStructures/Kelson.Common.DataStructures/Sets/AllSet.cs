@@ -198,6 +198,11 @@ namespace Kelson.Common.DataStructures.Sets
             throw new System.NotImplementedException();
         }
 
+        public IImmutableIndexSet Complement()
+        {
+            throw new NotImplementedException();
+        }
+
         public bool Contains(int index)
         {
             throw new System.NotImplementedException();

@@ -2,11 +2,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Linq;
 
 namespace Kelson.Common.DataStructures.Sets
-{    
+{
     public class UintSet : IImmutableSet<uint>
     {
         private readonly ImmutableSet64[] sets;

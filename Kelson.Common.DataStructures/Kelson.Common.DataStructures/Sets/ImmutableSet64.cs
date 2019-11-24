@@ -21,6 +21,17 @@ namespace Kelson.Common.DataStructures.Sets
 
         public ImmutableSet64(in ulong value) => values = value;
 
+        public ImmutableSet64(IEnumerable<int> values)
+        {
+            this.values = 0;
+            foreach (int value in values.Where(i => i >= 0 && i < 64))
+                this.values = this.values.Set(value);
+        }
+
+        public static ImmutableSet64 All => new ImmutableSet64(ulong.MaxValue);
+
+        public static ImmutableSet64 None => new ImmutableSet64(ulong.MinValue);
+
         /// <summary>
         /// Jump table mapping all byte values to the number of bits in that byte
         /// </summary>

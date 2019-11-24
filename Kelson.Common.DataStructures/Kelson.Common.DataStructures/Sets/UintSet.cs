@@ -6,15 +6,21 @@ using System.Linq;
 
 namespace Kelson.Common.DataStructures.Sets
 {
-    public class UintSet : IImmutableSet<uint>
+    public readonly struct UintSet : IImmutableSet<uint>
     {
         private readonly ImmutableSet64[] sets;
 
-        private int block(uint value) => (int)(value >> 6);
+        private readonly int _count;
+        public int Count => _count;
 
-        public UintSet()
+        private static int block(uint value) => (int)(value >> 6);
+
+        public UintSet(int blocksToFill = 0)
         {
-            sets = new ImmutableSet64[0];
+            _count = blocksToFill << 6;
+            sets = new ImmutableSet64[blocksToFill >> 64];
+            for (int i = 0; i < sets.Length; i++)
+                sets[i] = ImmutableSet64.All;
         }
 
         public UintSet(IEnumerable<uint> values)
@@ -53,9 +59,6 @@ namespace Kelson.Common.DataStructures.Sets
             sets = values.ToArray();
             _count = sets.Sum(s => s.Count);
         }
-
-        private readonly int _count;
-        public int Count => _count;
 
         public static UintSet operator <<(UintSet set, int shift)
         {
@@ -337,20 +340,40 @@ namespace Kelson.Common.DataStructures.Sets
 
         public IEnumerator<uint> GetEnumerator()
         {
+            var self = this.sets;
             IEnumerable<uint> values()
             {
-                for (int i = 0; i < sets.Length; i++)
+                for (int i = 0; i < self.Length; i++)
                 {
                     int add = i * 64;
-                    foreach (var value in sets[i])
+                    foreach (var value in self[i])
                         yield return (uint)(value + add);
                 }
             }
+
             return values().GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         public override string ToString() => $"Count = {Count}";
+
+        public static UintSet All(uint max)
+        {
+            IEnumerable<ImmutableSet64> setsIncludingAllUpTo(uint number)
+            {
+                uint current = 0;
+                while (current < number >> 6)
+                {
+                    yield return ImmutableSet64.All;
+                    number -= 64;
+                }
+                if (number > 0)
+                    yield return new ImmutableSet64(Enumerable.Range(0, (int)number));
+            }
+
+
+            return new UintSet(setsIncludingAllUpTo(max));
+        }
     }
 }

@@ -26,10 +26,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Kelson.Common.Bitwise" Version="0.1.0" />
     <PackageReference Include="Kelson.Common.Trees" Version="0.1.0" />
     <PackageReference Include="System.Collections.Immutable" Version="1.5.0" />
     <PackageReference Include="System.Memory" Version="4.5.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Kelson.Common.Bitwise\Kelson.Common.Bitwise\Kelson.Common.Bitwise\Kelson.Common.Bitwise.csproj" />
   </ItemGroup>
 
 </Project>

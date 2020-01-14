@@ -25,6 +25,7 @@ namespace Kelson.Common.DataStructures.Text
                     c = char.ToUpperInvariant(c);
                 if (!chars.ContainsKey(c))
                     chars[c] = new UintSet();
+                // record existence at index of char c
                 chars[c] = chars[c].Add(i++);
             }
         }

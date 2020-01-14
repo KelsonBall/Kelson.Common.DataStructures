@@ -328,3 +328,5 @@ ASALocalRun/
 
 # MFractors (Xamarin productivity tool) working folder 
 .mfractor/
+Kelson.Common.DataStructures/native/simdset/target/.rustc_info.json
+Kelson.Common.DataStructures/native/simdset/Cargo.lock

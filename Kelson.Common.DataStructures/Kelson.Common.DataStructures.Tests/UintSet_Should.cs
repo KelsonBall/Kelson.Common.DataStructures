@@ -143,11 +143,11 @@ namespace Kelson.Common.DataStructures.Tests
         {
             var set = new UintSet(new uint[] { 0, 64, 200 });
 
-            set = set << 1;
+            set <<= 1;
 
             set.Should().BeEquivalentTo(new uint[] { 63, 199 });
 
-            set = set << 50;
+            set <<= 50;
 
             set.Should().BeEquivalentTo(new uint[] { 13, 149 });
         }
@@ -157,11 +157,11 @@ namespace Kelson.Common.DataStructures.Tests
         {
             var set = new UintSet(new uint[] { 0, 63, 200 });
 
-            set = set >> 1;
+            set >>= 1;
 
             set.Should().BeEquivalentTo(new uint[] { 1, 64, 201 });
 
-            set = set >> 50;
+            set >>= 50;
 
             set.Should().BeEquivalentTo(new uint[] { 51, 114, 251 });
         }
